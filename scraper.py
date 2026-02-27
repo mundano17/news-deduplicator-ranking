@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from urllib.parse import urlparse
 
 import aiohttp
@@ -14,6 +15,7 @@ from models import Scrape
 class Scraper:
     def __init__(self, urls: list[str]):
         self.urls = urls
+        self.semaphore = asyncio.Semaphore(10)
 
     async def get_links(self):
         parsers: list[FeedParserDict] = [feedparser.parse(url) for url in self.urls]
@@ -39,13 +41,17 @@ class Scraper:
                 if len(doc.content() or "") > 30:
                     soup = BeautifulSoup(doc.summary(), "html.parser")
                     return Scrape(
-                        text=soup.get_text(separator="\n", strip=True), url=link
+                        text=soup.get_text(separator="\n", strip=True),
+                        url=link,
+                        id=uuid.uuid4(),
+                        headline=doc.title(),
                     )
                 else:
                     raise ValueError("len of scraped content is insufficient")
+
         except aiohttp.ClientError as e:
             print("Scraping error:", e)
-            return Scrape(text="", url=link)
+            return Scrape(text="", url=link, id=uuid.uuid4(), headline="")
 
     async def validate(
         self, session: aiohttp.ClientSession, link: str, userAgent: str = "*"
@@ -65,13 +71,16 @@ class Scraper:
             return False
 
     async def __call__(self):
-        async with aiohttp.ClientSession() as session:
-            urls = await self.get_links()
-            links = [self.validate(session, link) for link in urls]
-            allowed_links: list[str] = [
-                link for link in await asyncio.gather(*links) if link
-            ]
-            scraped_res = await asyncio.gather(
-                *[self.Scraping(session, link) for link in allowed_links]
-            )
-            return scraped_res
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=3)
+        ) as session:
+            async with self.semaphore:
+                urls = await self.get_links()
+                links = [self.validate(session, link) for link in urls]
+                allowed_links: list[str] = [
+                    link for link in await asyncio.gather(*links) if link
+                ]
+                scraped_res = await asyncio.gather(
+                    *[self.Scraping(session, link) for link in allowed_links]
+                )
+                return scraped_res

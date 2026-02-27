@@ -1,4 +1,6 @@
+import pandas as pd
 import torch
+import torch.nn.functional as F
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import HDBSCAN
 
@@ -20,12 +22,20 @@ class Clustering:
             show_progress_bar=True,
             convert_to_tensor=True,
         )
+        self.embeddings = F.normalize(self.embeddings, p=2, dim=1)
 
     def clustering(self):
-        clusterer = HDBSCAN(metric="cosine")
+        clusterer = HDBSCAN(metric="cosine", min_cluster_size=2)
         cluster = clusterer.fit(self.embeddings.cpu().numpy())
-        return cluster
+        clusterframe = pd.DataFrame(
+            {
+                "headline": [obj.headline for obj in self.text],
+                "cluster": cluster.labels_,
+            }
+        )
+        print(clusterframe)
+        return clusterframe
 
     def __call__(self):
-        self.clustering()
-        pass
+        clusterframe = self.clustering()
+        return clusterframe
