@@ -1,6 +1,6 @@
 import asyncio
 
-from clustering import Clustering
+from clustering import ClusteRanking
 from scraper import Scraper
 
 
@@ -15,7 +15,7 @@ async def main():
         ]
     )
     s = await k()
-    t = Clustering(s)
+    t = ClusteRanking(s)
     t()
 
 
